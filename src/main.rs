@@ -168,7 +168,7 @@ fn trace_route(target_ip: IpAddr, max_hops: u8, timeout: Duration, resolve: bool
                                 println!("{}  {:.2?}", display_address, rtt);
 
                                 // The following is for internal validation/debugging if needed.
-                                // It does not affect the primary stdout format anymore.
+                                // I might add a debug flag to enable this in the future.
                                 if let Some(time_exceeded_packet) =
                                     TimeExceededPacket::new(received_icmp_packet.payload())
                                 {
