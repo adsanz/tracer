@@ -212,15 +212,13 @@ fn trace_route(target_ip: IpAddr, max_hops: u8, timeout: Duration, resolve: bool
                                             format_address(target_ip, resolve)
                                         );
                                         return Ok(());
+                                    } else if id_match && seq_match {
+                                        println!("{}  {:.2?}", display_address, rtt);
                                     } else {
-                                        if id_match && seq_match {
-                                            println!("{}  {:.2?}", display_address, rtt);
-                                        } else {
-                                            println!(
-                                                "{} (mismatched EchoReply id/seq from intermediate) {:.2?}",
-                                                display_address, rtt
-                                            );
-                                        }
+                                        println!(
+                                            "{} (mismatched EchoReply id/seq from intermediate) {:.2?}",
+                                            display_address, rtt
+                                        );
                                     }
                                 } else {
                                     println!(
