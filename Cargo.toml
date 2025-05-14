@@ -10,5 +10,4 @@ clap = { version = "4.4.0", features = ["derive"] }
 pnet = "0.34.0"
 socket2 = { version = "0.5.5", features = ["all"] }
 anyhow = "1.0.75"
-rand = "0.8.5" # Potentially for generating packet identifiers
 dns-lookup = "2.0.4"
