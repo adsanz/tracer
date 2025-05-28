@@ -214,9 +214,11 @@ fn run_stats_mode(args: CliArgs) -> Result<()> {
             )?;
 
             update_target_stats(current_target_stats, &hop_infos, args.max_hops);
-            
+
             print!(".");
-            std::io::stdout().flush().context("Failed to flush stdout for dot")?;
+            std::io::stdout()
+                .flush()
+                .context("Failed to flush stdout for dot")?;
         }
 
         if !running.load(Ordering::SeqCst) {
@@ -232,7 +234,7 @@ fn run_stats_mode(args: CliArgs) -> Result<()> {
     println!(); // Newline after all the dots
     println!("\\nCtrl+C received, shutting down...");
     println!("--- Final Statistics ({} iterations) ---", iteration_count);
-    display_all_stats(&all_target_stats, &args)?; 
+    display_all_stats(&all_target_stats, &args)?;
     Ok(())
 }
 
@@ -420,10 +422,7 @@ fn update_target_stats(stats: &mut TargetStats, hop_infos: &[HopInfo], max_hops:
     stats.last_route = vec![None; max_hops as usize];
 
     for info in hop_infos {
-        let hop_stat = stats
-            .hop_stats
-            .entry(info.ttl)
-            .or_default();
+        let hop_stat = stats.hop_stats.entry(info.ttl).or_default();
         hop_stat.probes_sent += 1;
         let route_idx = (info.ttl - 1) as usize;
 
@@ -563,7 +562,7 @@ fn display_all_stats(
                 }
                 None => {
                     // Hop not reached or no data for this TTL in last trace
-                    if stats.hop_stats.get(&ttl).map_or(false, |hs| {
+                    if stats.hop_stats.get(&ttl).is_some_and(|hs| {
                         hs.probes_sent > 0
                             && hs.timeouts == hs.probes_sent
                             && hs.responses_received == 0
@@ -624,9 +623,9 @@ fn display_all_stats(
             if hop_stat.probes_sent == 0 {
                 // if stats_display_complete_for_target && !is_final_summary { // is_final_summary removed
                 if stats_display_complete_for_target { // Simplified: if already complete, and this hop has no data, skip.
-                     // This logic was to stop printing TTLs beyond the target in non-final.
-                     // For final, we usually show all collected stats.
-                     // Let's reconsider this break condition. For final summary, we want all data.
+                    // This logic was to stop printing TTLs beyond the target in non-final.
+                    // For final, we usually show all collected stats.
+                    // Let's reconsider this break condition. For final summary, we want all data.
                 }
                 // Let's remove the conditional break here for the final summary,
                 // as we want to show all hops that have data.
@@ -699,7 +698,7 @@ fn display_all_stats(
                 && hop_stat.destination_reached
                     == hop_stat.probes_sent - hop_stat.timeouts - hop_stat.operational_errors
             {
-                stats_display_complete_for_target = true; 
+                stats_display_complete_for_target = true;
                 // This flag helped stop printing further empty TTLs in intermediate views.
                 // In a final summary, it's less critical for breaking the loop, but can be kept.
             }
@@ -707,7 +706,9 @@ fn display_all_stats(
         println!("{}", table);
         println!("{:-<80}", "");
     }
-    std::io::stdout().flush().context("Failed to flush stdout in display_all_stats")?;
+    std::io::stdout()
+        .flush()
+        .context("Failed to flush stdout in display_all_stats")?;
     Ok(())
 }
 
