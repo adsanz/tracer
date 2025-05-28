@@ -46,6 +46,10 @@ struct CliArgs {
     /// Enable continuous statistics mode
     #[clap(long)]
     stats: bool,
+
+    /// Interval between traces in statistics mode (seconds)
+    #[clap(long, default_value_t = 1)]
+    stats_interval: u64,
 }
 
 // --- Data structures for statistics mode ---
@@ -172,8 +176,8 @@ fn run_stats_mode(args: CliArgs) -> Result<()> {
         args.targets
     );
     println!(
-        "Max Hops: {}, Timeout: {}ms, Resolve Hostnames: {}",
-        args.max_hops, args.timeout_ms, args.resolve
+        "Max Hops: {}, Timeout: {}ms, Resolve Hostnames: {}, Interval: {}s",
+        args.max_hops, args.timeout_ms, args.resolve, args.stats_interval
     );
     println!("Press Ctrl+C to stop.");
 
@@ -191,7 +195,6 @@ fn run_stats_mode(args: CliArgs) -> Result<()> {
     }
 
     let mut iteration_count = 0;
-    let spinner_chars = ['|', '/', '-', '\\'];
 
     while running.load(Ordering::SeqCst) {
         iteration_count += 1;
@@ -211,29 +214,25 @@ fn run_stats_mode(args: CliArgs) -> Result<()> {
             )?;
 
             update_target_stats(current_target_stats, &hop_infos, args.max_hops);
+            
+            print!(".");
+            std::io::stdout().flush().context("Failed to flush stdout for dot")?;
         }
 
         if !running.load(Ordering::SeqCst) {
             break;
         }
 
-        display_all_stats(
-            &all_target_stats,
-            &args,
-            iteration_count,
-            spinner_chars[iteration_count as usize % spinner_chars.len()],
-            false,
-        );
-
         if running.load(Ordering::SeqCst) {
             // Check again before sleep
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_secs(args.stats_interval));
         }
     }
 
-    println!("\nCtrl+C received, shutting down...");
+    println!(); // Newline after all the dots
+    println!("\\nCtrl+C received, shutting down...");
     println!("--- Final Statistics ({} iterations) ---", iteration_count);
-    display_all_stats(&all_target_stats, &args, iteration_count, ' ', true); // is_final = true
+    display_all_stats(&all_target_stats, &args)?; 
     Ok(())
 }
 
@@ -424,7 +423,7 @@ fn update_target_stats(stats: &mut TargetStats, hop_infos: &[HopInfo], max_hops:
         let hop_stat = stats
             .hop_stats
             .entry(info.ttl)
-            .or_insert_with(HopStatistic::default);
+            .or_default();
         hop_stat.probes_sent += 1;
         let route_idx = (info.ttl - 1) as usize;
 
@@ -501,30 +500,13 @@ fn update_target_stats(stats: &mut TargetStats, hop_infos: &[HopInfo], max_hops:
 fn display_all_stats(
     all_target_stats: &HashMap<IpAddr, TargetStats>,
     args: &CliArgs,
-    iteration: u64,
-    spinner: char,
-    is_final_summary: bool,
-) {
+) -> Result<()> {
     print!("\\x1B[2J\\x1B[1;1H"); // Clear screen and move cursor to top-left
 
-    if is_final_summary {
-        println!(
-            "--- Final Traceroute Statistics ({} iterations) ---",
-            iteration
-        );
-    } else {
-        println!(
-            "Traceroute Statistics Mode {} (Iteration: {})",
-            spinner, iteration
-        );
-    }
     println!(
         "Max Hops: {}, Timeout: {}ms, Resolve: {}",
         args.max_hops, args.timeout_ms, args.resolve
     );
-    if !is_final_summary {
-        println!("Press Ctrl+C to stop.");
-    }
     println!("{:-<80}", "");
 
     for (target_ip, stats) in all_target_stats {
@@ -621,30 +603,37 @@ fn display_all_stats(
 
         let mut hop_stats_to_display: Vec<_> = stats.hop_stats.iter().collect();
 
-        if is_final_summary {
-            hop_stats_to_display.sort_by(|(_, a_stat), (_, b_stat)| {
-                let loss_a = if a_stat.probes_sent == 0 {
-                    0.0
-                } else {
-                    a_stat.timeouts as f64 / a_stat.probes_sent as f64
-                };
-                let loss_b = if b_stat.probes_sent == 0 {
-                    0.0
-                } else {
-                    b_stat.timeouts as f64 / b_stat.probes_sent as f64
-                };
-                loss_b.partial_cmp(&loss_a).unwrap_or(CmpOrdering::Equal)
-            });
-        } else {
-            hop_stats_to_display.sort_by_key(|(ttl, _)| *ttl);
-        }
+        // Sorting is now unconditionally by loss percentage for the final summary
+        hop_stats_to_display.sort_by(|(_, a_stat), (_, b_stat)| {
+            let loss_a = if a_stat.probes_sent == 0 {
+                0.0
+            } else {
+                a_stat.timeouts as f64 / a_stat.probes_sent as f64
+            };
+            let loss_b = if b_stat.probes_sent == 0 {
+                0.0
+            } else {
+                b_stat.timeouts as f64 / b_stat.probes_sent as f64
+            };
+            loss_b.partial_cmp(&loss_a).unwrap_or(CmpOrdering::Equal)
+        });
+        // Removed the 'else' branch for sorting by TTL and the 'is_final_summary' check
 
-        let mut stats_display_complete_for_target = false;
+        let mut stats_display_complete_for_target = false; // This logic might need review if it depended on non-final display
         for (ttl, hop_stat) in hop_stats_to_display {
             if hop_stat.probes_sent == 0 {
-                if stats_display_complete_for_target && !is_final_summary {
-                    break;
+                // if stats_display_complete_for_target && !is_final_summary { // is_final_summary removed
+                if stats_display_complete_for_target { // Simplified: if already complete, and this hop has no data, skip.
+                     // This logic was to stop printing TTLs beyond the target in non-final.
+                     // For final, we usually show all collected stats.
+                     // Let's reconsider this break condition. For final summary, we want all data.
                 }
+                // Let's remove the conditional break here for the final summary,
+                // as we want to show all hops that have data.
+                // The original `if stats_display_complete_for_target && !is_final_summary { break; }`
+                // was for not showing empty TTL rows past the target in *intermediate* displays.
+                // For the final display, it's fine to show all collected data.
+                // So, if probes_sent is 0, we just continue.
                 continue;
             }
 
@@ -710,13 +699,16 @@ fn display_all_stats(
                 && hop_stat.destination_reached
                     == hop_stat.probes_sent - hop_stat.timeouts - hop_stat.operational_errors
             {
-                stats_display_complete_for_target = true;
+                stats_display_complete_for_target = true; 
+                // This flag helped stop printing further empty TTLs in intermediate views.
+                // In a final summary, it's less critical for breaking the loop, but can be kept.
             }
         }
         println!("{}", table);
         println!("{:-<80}", "");
     }
-    std::io::stdout().flush().unwrap_or_default();
+    std::io::stdout().flush().context("Failed to flush stdout in display_all_stats")?;
+    Ok(())
 }
 
 // Original trace_route function for single trace mode (remains largely unchanged)
