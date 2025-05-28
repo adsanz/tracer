@@ -8,6 +8,7 @@ A simple command-line traceroute utility written in Rust. This tool sends ICMP E
 -   Configurable maximum number of hops (TTL).
 -   Configurable timeout for each hop.
 -   Optional reverse DNS lookup for hop IP addresses.
+-   Continuous statistics mode (`--stats`) to monitor routes over time, displaying packet loss, average RTT, and other metrics.
 
 ## Prerequisites
 
@@ -46,6 +47,9 @@ sudo ./target/release/tracer [OPTIONS] <TARGETS>...
 -   `-t, --timeout-ms <TIMEOUT_MS>`: Timeout for each hop in milliseconds.
     -   Default: `1000`
 -   `-r, --resolve`: Resolve IP addresses to hostnames.
+-   `--stats`: Enable continuous statistics mode. In this mode, traces are run repeatedly until Ctrl+C is pressed. A summary of statistics is displayed upon termination.
+-   `--stats-interval <STATS_INTERVAL>`: Interval in seconds between traces when in statistics mode.
+    -   Default: `1`
 
 ## Examples
 
@@ -67,6 +71,12 @@ sudo ./target/release/tracer [OPTIONS] <TARGETS>...
     sudo ./target/release/tracer 8.8.8.8 1.1.1.1
     ```
 
+4.  Run traceroute in statistics mode for `8.8.8.8`, resolving hostnames, with a 5-second interval between traces:
+
+    ```bash
+    sudo ./target/release/tracer --stats --resolve --stats-interval 5 8.8.8.8
+    ```
+
 ## How it Works
 
 The tool sends ICMP Echo Request packets.
@@ -83,3 +93,5 @@ This project uses the following main Rust crates:
 -   `socket2` for enhanced socket control (raw sockets, TTL setting).
 -   `anyhow` for error handling.
 -   `dns-lookup` for reverse DNS lookups.
+-   `comfy-table` for displaying statistics in a formatted table (in stats mode).
+-   `ctrlc` for handling Ctrl+C interruption gracefully (in stats mode).
