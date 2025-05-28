@@ -11,3 +11,5 @@ pnet = "0.34.0"
 socket2 = { version = "0.5.5", features = ["all"] }
 anyhow = "1.0.75"
 dns-lookup = "2.0.4"
+ctrlc = "3.4.7"
+comfy-table = "7.1.4"
